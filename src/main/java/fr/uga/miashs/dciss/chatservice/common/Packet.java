@@ -27,5 +27,17 @@ public class Packet {
 		this.data = data;
 	}
 	
+    public int getSrcId() {
+        return srcId;
+    }
+
+    public int getDestId() {
+        return destId;
+    }
+
+    public byte[] getData() {
+        return data;
+    }
+	
 	
 }

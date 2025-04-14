@@ -41,8 +41,11 @@ Launch server
    or (mvn package required to recompile if changes are made)
    ```sh
       java -cp target/chatservice-0.0.1-SNAPSHOT-jar-with-dependencies.jar fr.uga.miashs.dciss.chatservice.server.ServerMsg
+   ``` 
+   Or (our version)
+   ```sh
+      mvn compile exec:java "-Dexec.mainClass=fr.uga.miashs.dciss.chatservice.server.ServerMsg"
    ```
-
 Launch client
    ```sh
       mvn package exec:java -Dexec.mainClass="fr.uga.miashs.dciss.chatservice.client.ClientMsg"
@@ -50,6 +53,10 @@ Launch client
    or (mvn package required to recompile if changes are made)
    ```sh
       java -cp target/chatservice-0.0.1-SNAPSHOT-jar-with-dependencies.jar fr.uga.miashs.dciss.chatservice.client.ClientMsg
+   ```
+   Or (our version)
+   ```sh
+      mvn compile exec:java "-Dexec.mainClass=fr.uga.miashs.dciss.chatservice.client.ClientMsg"
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

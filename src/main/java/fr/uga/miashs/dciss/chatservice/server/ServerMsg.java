@@ -5,7 +5,11 @@ import java.net.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
-
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import fr.uga.miashs.dciss.chatservice.common.Packet;
 import java.util.*;
 
@@ -13,6 +17,7 @@ public class ServerMsg {
 
 	private final static Logger LOG = Logger.getLogger(ServerMsg.class.getName());
 	public final static int SERVER_CLIENTID = 0;
+	private Connection dbConnection;
 
 	private transient ServerSocket serverSock;
 	private transient boolean started;
@@ -23,13 +28,13 @@ public class ServerMsg {
 	private Map<Integer, UserMsg> users;
 	private Map<Integer, GroupMsg> groups;
 
-	// 🔐 Map pour stocker les mots de passe des utilisateurs
+	// 🔐 Map pour stocker les mots de passe des utilisateurs (chargée depuis la BDD)
 	private Map<Integer, String> userPasswords = new ConcurrentHashMap<>();
 
 	// Séquences pour générer les identifiants d'utilisateurs et de groupes
 	private AtomicInteger nextUserId;
 	private AtomicInteger nextGroupId;
-
+	
 	public ServerMsg(int port) throws IOException {
 		serverSock = new ServerSocket(port);
 		started = false;
@@ -39,6 +44,49 @@ public class ServerMsg {
 		nextGroupId = new AtomicInteger(-1);
 		sp = new ServerPacketProcessor(this);
 		executor = Executors.newCachedThreadPool();
+
+		// Connexion à SQLite et chargement des utilisateurs existants
+		try {
+			dbConnection = DriverManager.getConnection("jdbc:derby:chat_users.db;create=true");
+			createUserTableIfNotExists();
+			loadUsersFromDatabase();
+		} catch (SQLException e) {
+			throw new IOException("Erreur base de données", e);
+		}
+	}
+
+	private void createUserTableIfNotExists() throws SQLException {
+		String sql = "CREATE TABLE users (id INT PRIMARY KEY, password VARCHAR(255))";
+		try (PreparedStatement stmt = dbConnection.prepareStatement(sql)) {
+			stmt.executeUpdate();
+		} catch (SQLException e) {
+			if (!"X0Y32".equals(e.getSQLState())) { // table already exists
+				throw e;
+			}
+		}
+	}
+
+	private void loadUsersFromDatabase() throws SQLException {
+		String sql = "SELECT id, password FROM users";
+		try (PreparedStatement stmt = dbConnection.prepareStatement(sql);
+			 ResultSet rs = stmt.executeQuery()) {
+			while (rs.next()) {
+				int id = rs.getInt("id");
+				String pwd = rs.getString("password");
+				userPasswords.put(id, pwd);
+				users.put(id, new UserMsg(id, this));
+				nextUserId.updateAndGet(curr -> Math.max(curr, id + 1));
+			}
+		}
+	}
+
+	private void saveUserToDatabase(int id, String password) throws SQLException {
+		String sql = "INSERT INTO users (id, password) VALUES (?, ?)";
+		try (PreparedStatement stmt = dbConnection.prepareStatement(sql)) {
+			stmt.setInt(1, id);
+			stmt.setString(2, password);
+			stmt.executeUpdate();
+		}
 	}
 
 	public void start() {
@@ -60,6 +108,7 @@ public class ServerMsg {
 					dos.flush();
 					userPasswords.put(userId, password);
 					users.put(userId, new UserMsg(userId, this));
+					saveUserToDatabase(userId, password);
 				} else {
 					// 🔐 Authentification
 					String storedPassword = userPasswords.get(userId);
@@ -74,45 +123,37 @@ public class ServerMsg {
 
 					// ✅ Fermer l'ancien UserMsg s'il existe
 					UserMsg oldUser = users.get(userId);
-					if (oldUser != null) {
-						oldUser.close(); // libérer socket/threads précédents
-					}
-
-					// 🛠️ Recréer le UserMsg
+					if (oldUser != null) oldUser.close();
 					users.put(userId, new UserMsg(userId, this));
 				}
 
 				UserMsg user = users.get(userId);
 				if (user != null && user.open(s)) {
 					LOG.info("✅ Utilisateur " + userId + " connecté");
-					executor.submit(() -> user.receiveLoop());
-					executor.submit(() -> user.sendLoop());
+					executor.submit(user::receiveLoop);
+					executor.submit(user::sendLoop);
 				} else {
 					s.close();
 				}
 
-			} catch (IOException e) {
+			} catch (IOException | SQLException e) {
 				LOG.info("❌ Erreur ou fermeture du serveur");
 				e.printStackTrace();
 			}
 		}
 	}
 
-	// 🔄 Redirection des paquets en fonction de la destination
 	public void processPacket(Packet p) {
 		PacketProcessor pp = null;
 		if (p.destId < 0) {
-			// Groupe
 			UserMsg sender = users.get(p.srcId);
 			GroupMsg g = groups.get(p.destId);
 			if (g != null && g.getMembers().contains(sender)) {
 				pp = g;
 			}
 		} else if (p.destId > 0) {
-			// Utilisateur individuel
 			pp = users.get(p.destId);
 		} else {
-			// Paquet de gestion pour le serveur
 			pp = sp;
 		}
 

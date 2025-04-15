@@ -19,6 +19,7 @@ public class LoginFrame extends JFrame {
         JButton connectButton = new JButton("Connexion");
         JButton createButton = new JButton("Créer un compte");
 
+        // Connexion à un compte existant
         connectButton.addActionListener(e -> {
             try {
                 int id = Integer.parseInt(idField.getText());
@@ -28,7 +29,7 @@ public class LoginFrame extends JFrame {
                 int port = 1666;         // Port fixe
 
                 ClientMsg client = new ClientMsg(id, ip, port);
-                client.startSession();
+                client.startSession(password); // envoyer le mot de passe au moment de l’authentification
 
                 new ChatFrame(client);
                 dispose();
@@ -38,6 +39,7 @@ public class LoginFrame extends JFrame {
             }
         });
 
+        // Création d’un nouveau compte
         createButton.addActionListener(e -> {
             try {
                 String password = new String(passwordField.getPassword());
@@ -45,8 +47,8 @@ public class LoginFrame extends JFrame {
                 String ip = "localhost"; // IP fixe
                 int port = 1666;         // Port fixe
 
-                ClientMsg client = new ClientMsg(0, ip, port); // Demande de création d’ID
-                client.startSession();
+                ClientMsg client = new ClientMsg(0, ip, port); // Création de compte (id == 0)
+                client.startSession(password); // mot de passe transmis ici aussi
 
                 JOptionPane.showMessageDialog(this, "Nouveau compte créé. Identifiant : " + client.getIdentifier());
 

@@ -58,20 +58,35 @@ public class ServerMsg {
 	private void createUserTableIfNotExists() throws SQLException {
 		String sql = "CREATE TABLE users (id INT PRIMARY KEY, password VARCHAR(255))";
 		try (PreparedStatement stmt = dbConnection.prepareStatement(sql)) {
-			stmt.executeUpdate();
+			stmt.executeUpdate(); // Création de table si elle n'existe pas
 		} catch (SQLException e) {
-			if (!"X0Y32".equals(e.getSQLState())) { // table already exists
+			if (!"X0Y32".equals(e.getSQLState())) { // X0Y32 = table already exists
 				throw e;
+			} else {
+				// La table existe → on tente d’ajouter la colonne "username" si elle n'existe pas encore
+				try {
+					dbConnection.createStatement().executeUpdate("ALTER TABLE users ADD COLUMN username VARCHAR(255)");
+					System.out.println("✔️ Colonne 'username' ajoutée.");
+				} catch (SQLException ex) {
+					if ("X0Y32".equals(ex.getSQLState()) || "42X14".equals(ex.getSQLState())) {
+						System.out.println("ℹ️ Colonne 'username' existe déjà.");
+					} else {
+						throw ex;
+					}
+				}
 			}
 		}
 	}
 
+
+
 	private void loadUsersFromDatabase() throws SQLException {
-		String sql = "SELECT id, password FROM users";
+		String sql = "SELECT id, username, password FROM users";
 		try (PreparedStatement stmt = dbConnection.prepareStatement(sql);
 			 ResultSet rs = stmt.executeQuery()) {
 			while (rs.next()) {
 				int id = rs.getInt("id");
+				String username = rs.getString("username");
 				String pwd = rs.getString("password");
 				userPasswords.put(id, pwd);
 				users.put(id, new UserMsg(id, this));
@@ -80,13 +95,31 @@ public class ServerMsg {
 		}
 	}
 
-	private void saveUserToDatabase(int id, String password) throws SQLException {
-		String sql = "INSERT INTO users (id, password) VALUES (?, ?)";
+	private void saveUserToDatabase(int id, String username, String password) throws SQLException {
+		String sql = "INSERT INTO users (id, username, password) VALUES (?, ?, ?)";
 		try (PreparedStatement stmt = dbConnection.prepareStatement(sql)) {
 			stmt.setInt(1, id);
-			stmt.setString(2, password);
+			stmt.setString(2, username);
+			stmt.setString(3, password);
 			stmt.executeUpdate();
 		}
+	}
+	
+	private Map<Integer, String> getUserMap() throws SQLException {
+		Map<Integer, String> map = new HashMap<>();
+		String sql = "SELECT id, username FROM users";
+		try (PreparedStatement stmt = dbConnection.prepareStatement(sql);
+		     ResultSet rs = stmt.executeQuery()) {
+			while (rs.next()) {
+				int id = rs.getInt("id");
+				String username = rs.getString("username");
+				if (username == null) {
+					username = "Utilisateur_" + id; // ou "Inconnu"
+				}
+				map.put(id, username);
+			}
+		}
+		return map;
 	}
 
 	public void start() {
@@ -94,37 +127,82 @@ public class ServerMsg {
 		while (started) {
 			try {
 				Socket s = serverSock.accept();
-
 				DataInputStream dis = new DataInputStream(s.getInputStream());
 				DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 
+				s.setSoTimeout(100); // temps court pour détecter une commande spéciale
+
+				boolean handled = false;
+
+				// 🧠 Vérifie si une commande spéciale arrive immédiatement (ex: GET_USER_MAP)
+				try {
+					if (dis.available() > 0) {
+						String cmd = dis.readUTF();
+						if ("GET_USER_MAP".equals(cmd)) {
+							Map<Integer, String> userMap = getUserMap();
+							dos.writeInt(userMap.size());
+							for (Map.Entry<Integer, String> entry : userMap.entrySet()) {
+								dos.writeInt(entry.getKey());
+								dos.writeUTF(entry.getValue());
+							}
+							dos.flush();
+							s.close();
+							handled = true;
+						}
+					}
+				} catch (SocketTimeoutException ignored) {
+					// Pas une commande spéciale, c’est une connexion utilisateur normale
+				}
+
+				s.setSoTimeout(0); // désactive le timeout
+
+				if (handled) continue;
+
+				// 🔐 Authentification ou création de compte
 				int userId = dis.readInt();
 				String password = dis.readUTF();
+
+				System.out.println("Tentative de connexion :");
+				System.out.println(" - ID reçu : " + userId);
+				System.out.println(" - Mot de passe reçu : " + password);
 
 				if (userId == 0) {
 					// 🆕 Création de compte
 					userId = nextUserId.getAndIncrement();
+
+					String username = dis.readUTF(); // 🔄 lecture du pseudo
+
 					dos.writeInt(userId);
 					dos.flush();
+
 					userPasswords.put(userId, password);
 					users.put(userId, new UserMsg(userId, this));
-					saveUserToDatabase(userId, password);
+					saveUserToDatabase(userId, username, password);
+
+					System.out.println("✅ Compte créé : ID = " + userId + ", pseudo = " + username);
 				} else {
-					// 🔐 Authentification
+					// ✅ Connexion
 					String storedPassword = userPasswords.get(userId);
+
+					System.out.println(" - Mot de passe attendu : " + storedPassword);
+					System.out.println(" - Mot de passe correct ? " + password.equals(storedPassword));
+
 					if (storedPassword == null || !storedPassword.equals(password)) {
-						dos.writeBoolean(false); // ❌ mot de passe incorrect
+						System.out.println("❌ Connexion refusée (mot de passe incorrect ou ID inconnu)");
+						dos.writeBoolean(false);
 						dos.flush();
 						s.close();
 						continue;
 					}
-					dos.writeBoolean(true); // ✅ mot de passe accepté
+
+					dos.writeBoolean(true);
 					dos.flush();
 
-					// ✅ Fermer l'ancien UserMsg s'il existe
 					UserMsg oldUser = users.get(userId);
 					if (oldUser != null) oldUser.close();
 					users.put(userId, new UserMsg(userId, this));
+
+					System.out.println("✅ Connexion acceptée pour l'utilisateur " + userId);
 				}
 
 				UserMsg user = users.get(userId);
@@ -142,6 +220,8 @@ public class ServerMsg {
 			}
 		}
 	}
+
+
 
 	public void processPacket(Packet p) {
 		PacketProcessor pp = null;

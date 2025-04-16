@@ -7,64 +7,88 @@ import java.awt.*;
 
 public class LoginFrame extends JFrame {
 
+    private final CardLayout cardLayout = new CardLayout();
+    private final JPanel mainPanel = new JPanel(cardLayout);
+
     public LoginFrame() {
-        setTitle("Connexion au Chat");
-        setSize(300, 180);
+        setTitle("Bienvenue sur le Chat");
+        setSize(350, 200);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setLocationRelativeTo(null); // centrer la fenêtre
+        setLocationRelativeTo(null);
 
-        JTextField idField = new JTextField();
-        JPasswordField passwordField = new JPasswordField();
-
+        // Page principale
+        JPanel welcomePanel = new JPanel(new GridLayout(2, 1, 10, 10));
         JButton connectButton = new JButton("Connexion");
         JButton createButton = new JButton("Créer un compte");
+        welcomePanel.add(connectButton);
+        welcomePanel.add(createButton);
 
-        // Connexion à un compte existant
-        connectButton.addActionListener(e -> {
+        // Page de connexion
+        JPanel loginPanel = new JPanel(new GridLayout(3, 2, 5, 5));
+        JTextField idField = new JTextField();
+        JPasswordField passwordFieldLogin = new JPasswordField();
+        JButton loginSubmit = new JButton("Se connecter");
+        loginPanel.add(new JLabel("ID utilisateur :")); loginPanel.add(idField);
+        loginPanel.add(new JLabel("Mot de passe :")); loginPanel.add(passwordFieldLogin);
+        loginPanel.add(new JLabel("")); loginPanel.add(loginSubmit);
+
+        // Page de création
+        JPanel createPanel = new JPanel(new GridLayout(3, 2, 5, 5));
+        JTextField pseudoField = new JTextField();
+        JPasswordField passwordFieldCreate = new JPasswordField();
+        JButton createSubmit = new JButton("Créer");
+        createPanel.add(new JLabel("Nom d'utilisateur :")); createPanel.add(pseudoField);
+        createPanel.add(new JLabel("Mot de passe :")); createPanel.add(passwordFieldCreate);
+        createPanel.add(new JLabel("")); createPanel.add(createSubmit);
+
+        // Actions des boutons
+        connectButton.addActionListener(e -> cardLayout.show(mainPanel, "login"));
+        createButton.addActionListener(e -> cardLayout.show(mainPanel, "create"));
+
+        // Connexion utilisateur existant
+        loginSubmit.addActionListener(e -> {
             try {
                 int id = Integer.parseInt(idField.getText());
-                String password = new String(passwordField.getPassword());
+                String password = new String(passwordFieldLogin.getPassword());
+                ClientMsg client = new ClientMsg(id, "localhost", 1666);
+                client.startSession(password);
 
-                String ip = "localhost"; // IP fixe
-                int port = 1666;         // Port fixe
-
-                ClientMsg client = new ClientMsg(id, ip, port);
-                client.startSession(password); // envoyer le mot de passe au moment de l’authentification
-
+                System.out.println("✅ Connexion réussie, ouverture de la fenêtre de chat");
                 new ChatFrame(client);
-                dispose();
+                System.out.println("✅ Fenêtre ChatFrame créée");
 
+                dispose();
             } catch (Exception ex) {
+                ex.printStackTrace(); // 🔥 Affiche l'erreur dans la console
                 JOptionPane.showMessageDialog(this, "Erreur de connexion : " + ex.getMessage());
             }
         });
 
-        // Création d’un nouveau compte
-        createButton.addActionListener(e -> {
+
+
+        // Création de compte
+        createSubmit.addActionListener(e -> {
             try {
-                String password = new String(passwordField.getPassword());
+                String pseudo = pseudoField.getText();
+                String password = new String(passwordFieldCreate.getPassword());
 
-                String ip = "localhost"; // IP fixe
-                int port = 1666;         // Port fixe
-
-                ClientMsg client = new ClientMsg(0, ip, port); // Création de compte (id == 0)
-                client.startSession(password); // mot de passe transmis ici aussi
-
-                JOptionPane.showMessageDialog(this, "Nouveau compte créé. Identifiant : " + client.getIdentifier());
-
+                ClientMsg client = new ClientMsg("localhost", 1666); // ID = 0
+                client.startSession(password, pseudo); // ✨ Création de compte
+                JOptionPane.showMessageDialog(this, "Compte '" + pseudo + "' créé avec l'ID : " + client.getIdentifier());
                 new ChatFrame(client);
                 dispose();
-
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Erreur création de compte : " + ex.getMessage());
             }
         });
 
-        setLayout(new GridLayout(3, 2, 5, 5));
-        add(new JLabel("ID utilisateur :")); add(idField);
-        add(new JLabel("Mot de passe :")); add(passwordField);
-        add(connectButton); add(createButton);
+        // Ajout des panneaux à la carte
+        mainPanel.add(welcomePanel, "welcome");
+        mainPanel.add(loginPanel, "login");
+        mainPanel.add(createPanel, "create");
 
+        add(mainPanel);
+        cardLayout.show(mainPanel, "welcome");
         setVisible(true);
     }
 }

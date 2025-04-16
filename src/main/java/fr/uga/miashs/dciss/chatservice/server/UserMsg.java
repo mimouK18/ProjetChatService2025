@@ -151,5 +151,10 @@ public class UserMsg implements PacketProcessor{
 	public void process(Packet p) {
 		sendQueue.offer(p);
 	}
+
+	public void sendPacket(Packet packet) {
+		// TODO Auto-generated method stub
+		
+	}
 	
 }

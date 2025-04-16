@@ -8,14 +8,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import fr.uga.miashs.dciss.chatservice.common.Packet;
 
-/**
- * Manages the connection to a ServerMsg. Method startSession() is used to
- * establish the connection. Then messages can be send by a call to sendPacket.
- * The reception is done asynchronously (internally by the method receiveLoop())
- * and the reception of a message is notified to MessagesListeners. To register
- * a MessageListener, the method addMessageListener has to be called. Session
- * are closed thanks to the method closeSession().
- */
 public class ClientMsg {
 
 	private String serverAddress;
@@ -32,7 +24,6 @@ public class ClientMsg {
 
 	private String password;
 
-	// Constructeur pour un client avec un identifiant connu
 	public ClientMsg(int id, String address, int port) {
 		if (id < 0)
 			throw new IllegalArgumentException("id must not be less than 0");
@@ -45,12 +36,10 @@ public class ClientMsg {
 		cListeners = new ArrayList<>();
 	}
 
-	// Constructeur pour un client sans identifiant (création de compte)
 	public ClientMsg(String address, int port) {
 		this(0, address, port);
 	}
 
-	// Ajouter un écouteur de messages
 	public void addMessageListener(MessageListener l) {
 		if (l != null)
 			mListeners.add(l);
@@ -60,7 +49,6 @@ public class ClientMsg {
 		mListeners.forEach(x -> x.messageReceived(p));
 	}
 
-	// Ajouter un écouteur de connexion
 	public void addConnectionListener(ConnectionListener l) {
 		if (l != null)
 			cListeners.add(l);
@@ -74,13 +62,11 @@ public class ClientMsg {
 		return identifier;
 	}
 
-	/**
-	 * Méthode appelée pour établir la connexion avec mot de passe.
-	 */
 	public void startSession(String password) throws UnknownHostException {
 		this.password = password;
 		if (s == null || s.isClosed()) {
 			try {
+				System.out.println("🔌 Tentative de connexion au serveur...");
 				s = new Socket(serverAddress, serverPort);
 				dos = new DataOutputStream(s.getOutputStream());
 				dis = new DataInputStream(s.getInputStream());
@@ -89,21 +75,55 @@ public class ClientMsg {
 				dos.writeInt(identifier);
 				dos.writeUTF(password);
 				dos.flush();
+				System.out.println("📤 Identifiants envoyés au serveur.");
 
 				if (identifier == 0) {
-					// Création de compte : le serveur renvoie seulement un identifiant
+					// Création de compte
 					identifier = dis.readInt();
+					System.out.println("✅ Compte créé. ID reçu : " + identifier);
 				} else {
-					// Connexion normale : le serveur renvoie un boolean (authentification réussie ?)
+					// Connexion normale
 					boolean accepted = dis.readBoolean();
+					System.out.println("📥 Réponse du serveur : " + accepted);
 					if (!accepted) {
 						throw new IOException("Mot de passe incorrect.");
 					}
+					System.out.println("✅ Connexion acceptée.");
 				}
 
-				// Démarrage de la boucle de réception
 				new Thread(() -> receiveLoop()).start();
+				System.out.println("🔄 Démarrage de la réception des messages.");
 				notifyConnectionListeners(true);
+			} catch (IOException e) {
+				System.out.println("❌ Erreur de connexion : " + e.getMessage());
+				e.printStackTrace();
+				closeSession();
+				throw new RuntimeException("Erreur de connexion : " + e.getMessage());
+			}
+		}
+	}
+
+	
+	public void startSession(String password, String pseudo) throws UnknownHostException {
+		this.password = password;
+		if (s == null || s.isClosed()) {
+			try {
+				s = new Socket(serverAddress, serverPort);
+				dos = new DataOutputStream(s.getOutputStream());
+				dis = new DataInputStream(s.getInputStream());
+
+				// Envoi de l'identifiant (0), mot de passe et pseudo
+				dos.writeInt(identifier);       // = 0 pour un nouveau compte
+				dos.writeUTF(password);
+				dos.writeUTF(pseudo);           // 🆕 on envoie le pseudo ici
+				dos.flush();
+
+				// Le serveur renvoie l'identifiant attribué
+				identifier = dis.readInt();
+
+				new Thread(this::receiveLoop).start();
+				notifyConnectionListeners(true);
+
 			} catch (IOException e) {
 				e.printStackTrace();
 				closeSession();
@@ -112,7 +132,7 @@ public class ClientMsg {
 		}
 	}
 
-	// Envoie d’un paquet à un destinataire
+
 	public void sendPacket(int destId, byte[] data) {
 		try {
 			synchronized (dos) {
@@ -126,7 +146,6 @@ public class ClientMsg {
 		}
 	}
 
-	// Boucle d'écoute des messages entrants
 	private void receiveLoop() {
 		try {
 			while (s != null && !s.isClosed()) {
@@ -143,7 +162,6 @@ public class ClientMsg {
 		closeSession();
 	}
 
-	// Fermeture de la session
 	public void closeSession() {
 		try {
 			if (s != null)
@@ -154,4 +172,30 @@ public class ClientMsg {
 		s = null;
 		notifyConnectionListeners(false);
 	}
+
+	// 📦 Nouvelle méthode : récupérer la map ID → pseudo depuis le serveur
+	public Map<Integer, String> getUserMapFromServer() throws IOException {
+	    Map<Integer, String> map = new HashMap<>();
+
+	    // ⚠️ On ouvre une nouvelle connexion temporaire
+	    try (Socket tempSocket = new Socket(serverAddress, serverPort)) {
+	        DataOutputStream tempDos = new DataOutputStream(tempSocket.getOutputStream());
+	        DataInputStream tempDis = new DataInputStream(tempSocket.getInputStream());
+
+	        // 📤 Envoi de la commande spéciale
+	        tempDos.writeUTF("GET_USER_MAP");
+	        tempDos.flush();
+
+	        // 📥 Réception des données
+	        int size = tempDis.readInt(); // combien d'utilisateurs
+	        for (int i = 0; i < size; i++) {
+	            int id = tempDis.readInt();
+	            String name = tempDis.readUTF();
+	            map.put(id, name);
+	        }
+	    }
+
+	    return map;
+	}
+
 }

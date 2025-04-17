@@ -3,6 +3,9 @@ package fr.uga.miashs.dciss.chatservice.interfaceUtilisateur;
 import fr.uga.miashs.dciss.chatservice.client.ClientMsg;
 
 import javax.swing.*;
+
+
+
 import java.awt.*;
 
 public class LoginFrame extends JFrame {
@@ -16,7 +19,7 @@ public class LoginFrame extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        // Page principale
+        // Page principale (accueil)
         JPanel welcomePanel = new JPanel(new GridLayout(2, 1, 10, 10));
         JButton connectButton = new JButton("Connexion");
         JButton createButton = new JButton("Créer un compte");
@@ -41,30 +44,27 @@ public class LoginFrame extends JFrame {
         createPanel.add(new JLabel("Mot de passe :")); createPanel.add(passwordFieldCreate);
         createPanel.add(new JLabel("")); createPanel.add(createSubmit);
 
-        // Actions des boutons
+        // Actions de navigation
         connectButton.addActionListener(e -> cardLayout.show(mainPanel, "login"));
         createButton.addActionListener(e -> cardLayout.show(mainPanel, "create"));
 
-        // Connexion utilisateur existant
+        // Connexion existante
         loginSubmit.addActionListener(e -> {
             try {
                 int id = Integer.parseInt(idField.getText());
                 String password = new String(passwordFieldLogin.getPassword());
+
                 ClientMsg client = new ClientMsg(id, "localhost", 1666);
                 client.startSession(password);
 
-                System.out.println("✅ Connexion réussie, ouverture de la fenêtre de chat");
                 new ChatFrame(client);
-                System.out.println("✅ Fenêtre ChatFrame créée");
-
                 dispose();
+
             } catch (Exception ex) {
-                ex.printStackTrace(); // 🔥 Affiche l'erreur dans la console
+                ex.printStackTrace();
                 JOptionPane.showMessageDialog(this, "Erreur de connexion : " + ex.getMessage());
             }
         });
-
-
 
         // Création de compte
         createSubmit.addActionListener(e -> {
@@ -72,17 +72,20 @@ public class LoginFrame extends JFrame {
                 String pseudo = pseudoField.getText();
                 String password = new String(passwordFieldCreate.getPassword());
 
-                ClientMsg client = new ClientMsg("localhost", 1666); // ID = 0
-                client.startSession(password, pseudo); // ✨ Création de compte
+                ClientMsg client = new ClientMsg("localhost", 1666); // ID = 0 pour création
+                client.startSession(password, pseudo); // Création de compte
+
                 JOptionPane.showMessageDialog(this, "Compte '" + pseudo + "' créé avec l'ID : " + client.getIdentifier());
                 new ChatFrame(client);
                 dispose();
+
             } catch (Exception ex) {
+                ex.printStackTrace();
                 JOptionPane.showMessageDialog(this, "Erreur création de compte : " + ex.getMessage());
             }
         });
 
-        // Ajout des panneaux à la carte
+        // Ajout des vues dans le panel principal
         mainPanel.add(welcomePanel, "welcome");
         mainPanel.add(loginPanel, "login");
         mainPanel.add(createPanel, "create");

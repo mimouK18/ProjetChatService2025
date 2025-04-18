@@ -32,6 +32,7 @@ public class UserMsg implements PacketProcessor{
 	
 	private BlockingQueue<Packet> sendQueue;
 	
+	
 	public UserMsg(int clientId, ServerMsg server) {
 		if (clientId<1) throw new IllegalArgumentException("id must not be less than 0");
 		this.server=server;
@@ -40,6 +41,8 @@ public class UserMsg implements PacketProcessor{
 		sendQueue = new LinkedBlockingQueue<>();
 		groups = Collections.synchronizedSet(new HashSet<>());
 	}
+	
+
 	
 	public int getId() {
 		return userId;

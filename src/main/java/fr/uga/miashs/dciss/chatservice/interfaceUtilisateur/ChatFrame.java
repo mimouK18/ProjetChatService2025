@@ -6,10 +6,9 @@ import fr.uga.miashs.dciss.chatservice.common.Packet;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
+import java.awt.event.*;
 import java.util.*;
 import java.util.List;
-
 
 public class ChatFrame extends JFrame {
 
@@ -19,6 +18,8 @@ public class ChatFrame extends JFrame {
     private final JComboBox<Integer> userSelector;
     private final Map<Integer, String> userMap;
     private final List<Groupe> groupes = new ArrayList<>();
+    private final DefaultListModel<String> groupeListModel = new DefaultListModel<>();
+    private final JList<String> groupeList = new JList<>(groupeListModel);
 
     public ChatFrame(ClientMsg client) throws Exception {
         this.client = client;
@@ -28,12 +29,10 @@ public class ChatFrame extends JFrame {
         setLocationRelativeTo(null);
 
         userMap = client.getUserMapFromServer();
-
         JTabbedPane tabbedPane = new JTabbedPane();
 
-        // === ONGLET 1 : Discussion privée ===
+        // === ONGLET 1 : Messages privés ===
         JPanel chatPanel = new JPanel(new BorderLayout());
-
         chatArea = new JTextArea();
         chatArea.setEditable(false);
         JScrollPane scrollPane = new JScrollPane(chatArea);
@@ -62,8 +61,24 @@ public class ChatFrame extends JFrame {
         client.addMessageListener(new MessageListener() {
             @Override
             public void messageReceived(Packet p) {
-                String senderName = userMap.getOrDefault(p.srcId, "Utilisateur " + p.srcId);
                 String content = new String(p.getData());
+
+                if (content.startsWith("GROUP_ADDED|")) {
+                    String[] parts = content.split("\\|");
+                    int groupId = Integer.parseInt(parts[1]);
+                    String groupName = parts[2];
+                    String ownerName = parts[3];
+
+                    JOptionPane.showMessageDialog(null,
+                            "👥 Vous avez été ajouté au groupe '" + groupName + "' par " + ownerName);
+
+                    Groupe g = new Groupe(groupId, groupName, 0);
+                    groupes.add(g);
+                    groupeListModel.addElement(g.toString());
+                    return;
+                }
+
+                String senderName = userMap.getOrDefault(p.srcId, "Utilisateur " + p.srcId);
                 chatArea.append("💬 " + senderName + " : " + content + "\n");
             }
         });
@@ -71,9 +86,6 @@ public class ChatFrame extends JFrame {
         // === ONGLET 2 : Groupes ===
         JPanel groupePanel = new JPanel(new BorderLayout());
         JButton creerGroupeButton = new JButton("Créer un groupe");
-        DefaultListModel<String> groupeListModel = new DefaultListModel<>();
-        JList<String> groupeList = new JList<>(groupeListModel);
-        JScrollPane groupeScroll = new JScrollPane(groupeList);
 
         creerGroupeButton.addActionListener((ActionEvent e) -> {
             String nomGroupe = JOptionPane.showInputDialog(this, "Nom du groupe :");
@@ -81,14 +93,30 @@ public class ChatFrame extends JFrame {
                 Groupe groupe = new Groupe(-1, nomGroupe.trim(), client.getIdentifier());
                 groupes.add(groupe);
                 groupeListModel.addElement(groupe.toString());
-                new GroupeFrame(groupe, userMap, client.getIdentifier());
+                new GroupeFrame(groupe, userMap, client.getIdentifier(), () -> {
+                    int index = groupes.indexOf(groupe);
+                    if (index >= 0) {
+                        groupeListModel.set(index, groupe.toString());
+                    }
+                });
+            }
+        });
+
+        groupeList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent evt) {
+                if (evt.getClickCount() == 2) {
+                    int index = groupeList.locationToIndex(evt.getPoint());
+                    if (index >= 0) {
+                        Groupe selectedGroupe = groupes.get(index);
+                        new GroupeDiscussionFrame(client, selectedGroupe, userMap);
+                    }
+                }
             }
         });
 
         groupePanel.add(creerGroupeButton, BorderLayout.NORTH);
-        groupePanel.add(groupeScroll, BorderLayout.CENTER);
+        groupePanel.add(new JScrollPane(groupeList), BorderLayout.CENTER);
 
-        // Ajout des onglets au JTabbedPane
         tabbedPane.addTab("Messages privés", chatPanel);
         tabbedPane.addTab("Groupes", groupePanel);
 
@@ -98,9 +126,9 @@ public class ChatFrame extends JFrame {
 
     private void sendMessage() {
         try {
-            int destId = (Integer) userSelector.getSelectedItem();
+            Integer destId = (Integer) userSelector.getSelectedItem();
             String message = messageField.getText().trim();
-            if (!message.isEmpty()) {
+            if (destId != null && !message.isEmpty()) {
                 client.sendPacket(destId, message.getBytes());
                 String recipient = userMap.getOrDefault(destId, "Utilisateur " + destId);
                 chatArea.append("🧑 Moi → " + recipient + " : " + message + "\n");

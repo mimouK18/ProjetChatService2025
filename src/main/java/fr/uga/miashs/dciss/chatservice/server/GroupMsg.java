@@ -42,8 +42,24 @@ public class GroupMsg implements PacketProcessor {
 	 * @return
 	 */
 	public boolean addMember(UserMsg s) {
-		return s!=null && members.add(s) && s.getGroups().add(this);
+	    if (s == null || members.contains(s)) return false;
+
+	    boolean added = members.add(s) && s.getGroups().add(this);
+	    if (added) {
+	        // 🔔 Envoi d'une notification à l'utilisateur ajouté
+	        String message = "Vous avez été ajouté au groupe (ID: " + groupId + ") par l'utilisateur " + owner.getId();
+	        Packet notification = new Packet(owner.getId(), s.getId(), message.getBytes());
+	        s.process(notification);
+
+	        // 🔄 Mise à jour côté client pour ajouter le groupe dynamiquement
+	        String groupUpdate = "GROUP_ADDED:" + groupId + ":" + owner.getId();
+	        Packet update = new Packet(owner.getId(), s.getId(), groupUpdate.getBytes());
+	        s.process(update);
+	    }
+
+	    return added;
 	}
+
 	
 	/**
 	 * This method has to be used to remove a member from the group.

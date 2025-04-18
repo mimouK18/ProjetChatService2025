@@ -135,7 +135,9 @@ public class ServerMsg {
                     }
                 } catch (SocketTimeoutException ignored) {}
 
-                s.setSoTimeout(0);
+                if (!s.isClosed()) {
+                    s.setSoTimeout(0);
+                }
                 if (handled) continue;
 
                 int userId = dis.readInt();
